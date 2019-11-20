@@ -1,11 +1,11 @@
-package pyang;
+package pyangext;
 
 @:pythonImport("optparse", "Values") extern class Values { }
 @:pythonImport("optparse", "Option") extern class Option { }
 
 @:pythonImport("optparse", "OptionGroup") 
 extern class OptionGroup {
-    public function add_options(option_list:Array<Option>);
+    public function add_options(option_list:Array<Option>):Void;
 }
 
 @:pythonImport("optparse", "OptionParser") 

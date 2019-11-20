@@ -1,4 +1,4 @@
-package pyang;
+package pyangext;
 
 @:pythonImport("pyang.plugin") 
 extern class Plugin {

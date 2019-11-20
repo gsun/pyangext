@@ -1,4 +1,4 @@
-package pyang;
+package pyangext;
 
 @:pythonImport("pyang", "Context") 
 extern class Context {

@@ -1,4 +1,4 @@
-package pyang;
+package pyangext;
 
 @:pythonImport("pyang.error", "Position") 
 extern class Position {

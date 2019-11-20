@@ -1,7 +1,7 @@
-package pyang;
+package pyangext;
 
 import haxe.extern.EitherType;
-import python.Tuple2;
+import python.Tuple.Tuple2;
 import python.Dict;
 
 @:pythonImport("pyang.statements", "Statement") 
