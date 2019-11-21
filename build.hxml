@@ -1,4 +1,4 @@
 TreePlugin 
 -cp src 
 -cp plugins 
--python tree.py
+-python yatree.py

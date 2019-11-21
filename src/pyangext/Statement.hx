@@ -14,8 +14,9 @@ extern class Statement {
     public var substmts : Array<Statement>;
 
     public var i_config : Bool;
-    public var i_module : Statement;
-    public var i_orig_module : Statement;
+    public var i_module : ModSubmodStatement;
+    public var i_orig_module : ModSubmodStatement;
+    public var i_modulename : String;
     
     public var i_children : Array<Statement>;
     public var i_extension : Statement;
