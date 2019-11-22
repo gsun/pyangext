@@ -86,6 +86,9 @@ class TreePlugin extends PyangPlugin {
         }
         return ww;
     }
-    function print_node(i_children:Statement, module:Statement, fd:TextIOBase, prefix:String, mode:String, width:Int=0) {
+    function print_node(s:Statement, module:Statement, fd:TextIOBase, prefix:String, mode:String, width:Int=0) {
+        var name = (s.i_module.i_modulename == module.i_modulename)?s.arg:(s.i_module.i_prefix + ':' + s.arg); 
+        var line = " " + name;
+        fd.write(line + '\n');
     }
 }
