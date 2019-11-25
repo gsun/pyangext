@@ -6,6 +6,9 @@ import pyangext.Optparse.OptionParser;
 import pyangext.*;
 using Lambda;
 
+/* need ot add module function pyang_plugin_init in generated python file, 
+   and call TreePlugin.pyang_plugin_init() in pyang_plugin_init. */
+
 class TreePlugin extends PyangPlugin {
     public function new() {
         super("yatree");
@@ -90,5 +93,8 @@ class TreePlugin extends PyangPlugin {
         var name = (s.i_module.i_modulename == module.i_modulename)?s.arg:(s.i_module.i_prefix + ':' + s.arg); 
         var line = " " + name;
         fd.write(line + '\n');
+    }
+    static function pyang_plugin_init() {
+        Plugin.register_plugin(new TreePlugin());
     }
 }
