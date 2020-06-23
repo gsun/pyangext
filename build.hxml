@@ -1,4 +1,10 @@
 TreePlugin 
 -cp src 
 -cp plugins 
--python yatree.py
+-python bin\yatree.py
+
+--next
+HxPlugin 
+-cp src 
+-cp plugins 
+-python bin\haxe.py

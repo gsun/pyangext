@@ -2,7 +2,7 @@ package;
 
 import python.lib.io.TextIOBase;
 import python.Dict;
-import pyangext.Optparse.OptionParser;
+import pyangext.Optparse.*;
 import pyangext.*;
 using Lambda;
 
@@ -13,7 +13,40 @@ class TreePlugin extends PyangPlugin {
     public function new() {
         super("yatree");
     }
-    override public function add_opts(optparser:OptionParser) {}
+    override public function add_opts(optparser:Optparse.OptParser) {
+        var optlist:Array<Optparse.Option> = [
+            Optparse.make_option("--yatree-help", {
+                                  dest : "tree_help",
+                                  action : "store_true",
+                                  help : "Print help on tree symbols and exit"}),
+            Optparse.make_option("--yatree-depth", {
+                                  type : "int",
+                                  dest : "tree_depth",
+                                  help : "Number of levels to print"}),
+            Optparse.make_option("--yatree-line-length", {
+                                 type : "int",
+                                 dest : "tree_line_length",
+                                 help : "Maximum line length"}),
+            Optparse.make_option("--yatree-path", {
+                                 dest : "tree_path", 
+                                 help : "Subtree to print"}),
+            Optparse.make_option("--yatree-print-groupings", {
+                                 dest : "tree_print_groupings",
+                                 action : "store_true",
+                                 help : "Print groupings"}),
+            Optparse.make_option("--yatree-no-expand-uses", {
+                                 dest : "tree_no_expand_uses",
+                                 action : "store_true",
+                                 help : "Do not expand uses of groupings"}),
+            Optparse.make_option("--yatree-module-name-prefix", {
+                                 dest : "modname_prefix",
+                                 action : "store_true",
+                                 help : "Prefix with module names instead of " +
+                                 "prefixes"}),
+            ];
+            var g = optparser.add_option_group("Tree output specific options");
+            g.add_options(optlist);
+    }
     override public function add_output_format(fmts:Dict<String, PyangPlugin>) {
         multiple_modules = true;
         fmts.set("yatree", this);
@@ -22,7 +55,57 @@ class TreePlugin extends PyangPlugin {
         emit_tree(ctx, modules, writef);
     
     }
-    override public function setup_ctx(ctx:Context) {}
+
+    function print_help() {
+        Sys.println("
+    Each node is printed as:
+
+    <status>--<flags> <name><opts> <type> <if-features>
+
+      <status> is one of:
+        +  for current
+        x  for deprecated
+        o  for obsolete
+
+      <flags> is one of:
+        rw  for configuration data
+        ro  for non-configuration data, output parameters to rpcs
+            and actions, and notification parameters
+        -w  for input parameters to rpcs and actions
+        -u  for uses of a grouping
+        -x  for rpcs and actions
+        -n  for notifications
+
+      <name> is the name of the node
+        (<name>) means that the node is a choice node
+       :(<name>) means that the node is a case node
+
+       If the node is augmented into the tree from another module, its
+       name is printed as <prefix>:<name>.
+
+      <opts> is one of:
+        ?  for an optional leaf, choice, anydata or anyxml
+        !  for a presence container
+        *  for a leaf-list or list
+        [<keys>] for a list's keys
+
+        <type> is the name of the type for leafs and leaf-lists, or
+               \"<anydata>\" or \"<anyxml>\" for anydata and anyxml, respectively
+
+        If the type is a leafref, the type is printed as \"-> TARGET\", where
+        TARGET is the leafref path, with prefixes removed if possible.
+
+      <if-features> is the list of features this node depends on, printed
+        within curly brackets and a question mark \"{...}?\"
+    ");
+    }
+    
+    override public function setup_ctx(ctx:Context) {
+        if (ctx.opts.yatree_help) {
+            print_help();
+            Sys.exit(0);
+        }
+    }
     override public function setup_fmt(ctx:Context) {
         ctx.implicit_errors = false;
     }
