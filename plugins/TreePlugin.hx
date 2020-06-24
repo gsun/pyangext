@@ -4,6 +4,7 @@ import python.lib.io.TextIOBase;
 import python.Dict;
 import pyangext.Optparse.*;
 import pyangext.*;
+import python.Tuple.Tuple2;
 using Lambda;
 
 /* need ot add module function pyang_plugin_init in generated python file, 
@@ -52,8 +53,12 @@ class TreePlugin extends PyangPlugin {
         fmts.set("yatree", this);
     }
     override public function emit(ctx:Context, modules:Array<Statement>, writef:TextIOBase) {
-        emit_tree(ctx, modules, writef);
-    
+        var path:Array<String> = [];
+        if (ctx.opts.tree_path != null) {
+            path = ctx.opts.tree_path.split('/');
+            if (path[0] == '') path.shift();
+        }
+        emit_tree(ctx, modules, writef, ctx.opts.tree_depth, ctx.opts.tree_line_length, path);
     }
 
     function print_help() {
@@ -110,39 +115,173 @@ class TreePlugin extends PyangPlugin {
         ctx.implicit_errors = false;
     }
     
-    function emit_tree(ctx:Context, modules:Array<Statement>, fd:TextIOBase) {
+    function emit_tree(ctx:Context, modules:Array<Statement>, fd:TextIOBase, depth:Int, llen:Int, path:Array<String>) {
+        var printed_header:Bool = false;
+        function print_header(module:Statement) {
+            var b = module.search_one('belongs-to');
+            var bstr = (b != null)?' (belongs-to ${b.arg})':'';
+            fd.write('${module.keyword}: ${module.arg}${bstr}\n');
+            printed_header = true;
+        };
         for (module in modules) {
-            var chs = [for (ch in module.i_children) if (Statements.data_definition_keywords.has(ch.keyword)) ch];
-            if (chs.length > 0) print_children(chs, module, fd, '', 'data');
+            var i_children:Array<Statement> = cast module.i_children;
+            var chs = [for (ch in i_children) if (Statements.data_definition_keywords.has(ch.keyword)) ch];
+            var chpath:Array<String> = [];
+            if (path.length > 0) {
+                chs = [for (ch in chs) if (ch.arg == path[0]) ch];
+                chpath = path.slice(1);
+            }
+            if (chs.length > 0) {
+                if (!printed_header) {
+                    print_header(module);
+                    printed_header = true;
+                }
+                print_children(chs, module, fd, '', chpath, 'data', depth, llen,
+                               ctx.opts.tree_no_expand_uses,
+                               ctx.opts.modname_prefix);
+            }
             var mods = [module];
             for (i in module.search('include')) {
                 var subm = ctx.get_module(i.arg);
                 if (subm != null) mods.push(subm);
             }
+            var section_delimiter_printed = false;
             for (m in mods) {
                 for (a in m.search('augment')) {
                     var augment : AugmentStatement = cast a;
-                    var i_module = augment.i_target_node.i_module;
+                    var i_module:Statement = cast augment.i_target_node.i_module;
                     if (i_module != null && !modules.has(i_module) && !mods.has(i_module)) {
-                        print_path("  augment", ":", augment.arg, fd);
+                        if (!section_delimiter_printed) {
+                            fd.write('\n');
+                            section_delimiter_printed = true;
+                        }
+                        if (!printed_header) {
+                            print_header(module);
+                            printed_header = true;
+                        }
+                        print_path("  augment", ":", augment.arg, fd, llen);
                         var mode = switch (augment.i_target_node.keyword) {
                             case 'input': 'input';
                             case 'output': 'output';
                             case 'notification': 'notification';
                             default: 'augment';
                         }
-                        print_children(augment.i_children, m, fd, '  ', mode);
+                        print_children(augment.i_children, m, fd,
+                                   '  ', path, mode, depth, llen,
+                                   ctx.opts.tree_no_expand_uses,
+                                   ctx.opts.modname_prefix);
                     }
                 }
             }
-            var rpcs = [for (ch in module.i_children) if (ch.keyword == 'rpc') ch];
-            if (rpcs.length > 0) print_children(rpcs, module, fd, '  ', 'rpc');
-            var notifs = [for (ch in module.i_children) if (ch.keyword == 'notification') ch];
-            if (notifs.length > 0) print_children(notifs, module, fd, '  ', 'notification');
+            var rpcs = [for (ch in i_children) if (ch.keyword == 'rpc') ch];
+            var rpath:Array<String> = [];
+            if (path.length > 0) {
+                rpcs = [for (rpc in rpcs) if (rpc.arg == path[0]) rpc];
+                rpath = path.slice(1);
+            }
+            if (rpcs.length > 0) {
+                if (!printed_header) {
+                    print_header(module);
+                    printed_header = true;
+                }
+                fd.write("\n  rpcs:\n");
+                print_children(rpcs, module, fd, '  ', rpath, 'rpc', depth, llen,
+                           ctx.opts.tree_no_expand_uses,
+                           ctx.opts.modname_prefix);
+            }
+            var notifs = [for (ch in i_children) if (ch.keyword == 'notification') ch];
+            var npath:Array<String> = [];
+            if (path.length > 0) {
+                notifs = [for (n in notifs) if (n.arg == path[0]) n];
+                npath = path.slice(1);
+            }
+            if (notifs.length > 0) {
+                if (!printed_header) {
+                    print_header(module);
+                    printed_header = true;
+                }
+                fd.write("\n  notifications:\n");
+                print_children(notifs, module, fd, '  ', npath,
+                           'notification', depth, llen,
+                           ctx.opts.tree_no_expand_uses,
+                           ctx.opts.modname_prefix);
+            }
+            if (ctx.opts.tree_print_groupings) {
+                section_delimiter_printed = false;
+                for (m in mods) {
+                    for (g in m.search('grouping')) {
+                        if (!printed_header) {
+                            print_header(module);
+                            printed_header = true;
+                        }
+                        if (!section_delimiter_printed) {
+                            fd.write('\n');
+                            section_delimiter_printed = true;
+                        }
+                        fd.write('  grouping ${g.arg}\n');
+                        print_children(g.i_children, m, fd,
+                                       '  ', path, 'grouping', depth, llen,
+                                       ctx.opts.tree_no_expand_uses,
+                                       ctx.opts.modname_prefix);
+                    }
+                }
+            }
+            if (ctx.opts.tree_print_yang_data) {
+                var yds = module.search(Tuple2.make('ietf-restconf', 'yang-data'));
+                if (yds.length > 0) {
+                    if (!printed_header) {
+                        print_header(module);
+                        printed_header = true;
+                    }
+                    section_delimiter_printed = false;
+                    for (yd in yds) {
+                        if (!section_delimiter_printed) {
+                            fd.write('\n');
+                            section_delimiter_printed = true;
+                        }
+                        fd.write('  yang-data ${yd.arg}:\n');
+                        print_children(yd.i_children, module, fd, '  ', path,
+                                       'yang-data', depth, llen,
+                                       ctx.opts.tree_no_expand_uses,
+                                       ctx.opts.modname_prefix);
+                    }
+                }
+            }
         }
     }
     
-    function print_children(i_children:Array<Statement>, module:Statement, fd:TextIOBase, prefix:String, mode:String, width:Int=0) {
+    function unexpand_uses(i_children:Array<Statement>):Array<Statement> {
+        var res:Array<Statement> = [];
+        var uses:Array<String>= [];
+        for (ch in i_children) {
+            var i_uses:Array<Statement> = cast ch.i_uses;
+            if (i_uses != null && i_uses.length > 0) {
+                // take first from i_uses, which means "closest" grouping
+                var g = i_uses[0].arg;
+                if (!uses.has(g)) {
+                    // first node from this uses
+                    uses.push(g);
+                    res.push(i_uses[0]);
+                }
+            } else {
+                res.push(ch);
+            }
+        }
+        return res;
+    }
+    
+    function print_path(pre:String, post:String, path:String, fd:TextIOBase, llen:Int) {
+        var line = pre + ' ' + path + post + '\n';
+        fd.write(line);
+    }
+    
+    function print_children(i_children:Array<Statement>, module:Statement, fd:TextIOBase, prefix:String, path:Array<String>, mode:String, depth:Int,
+                            llen:Int, no_expand_uses:Bool, width:Int=0, prefix_with_modname:Bool=false) {
+        if (depth == 0) {
+            if (i_children != null) fd.write(prefix + '     ...\n');
+            return;
+        }
+        if (no_expand_uses) i_children = unexpand_uses(i_children);
         var w = (width==0)?get_width(0, i_children, module):width;
         for (ch in i_children) {
             if ((ch.keyword == 'input' || ch.keyword == 'output') && (ch.i_children.length == 0)) continue;
@@ -151,10 +290,13 @@ class TreePlugin extends PyangPlugin {
             print_node(ch, module, fd, newprefix, ch.keyword, w);
         }
     }
-    function print_path(pre:String, post:String, path:String, fd:TextIOBase) {
-        var line = pre + ' ' + path + post + '\n';
-        fd.write(line);
+
+    function print_node(s:Statement, module:Statement, fd:TextIOBase, prefix:String, mode:String, width:Int=0) {
+        var name = (s.i_module.i_modulename == module.i_modulename)?s.arg:(s.i_module.i_prefix + ':' + s.arg); 
+        var line = " " + name;
+        fd.write(line + '\n');
     }
+    
     function get_width(w:Int, chs:Array<Statement>, module:Statement) {
         var ww = w;
         for (ch in chs) {
@@ -172,11 +314,7 @@ class TreePlugin extends PyangPlugin {
         }
         return ww;
     }
-    function print_node(s:Statement, module:Statement, fd:TextIOBase, prefix:String, mode:String, width:Int=0) {
-        var name = (s.i_module.i_modulename == module.i_modulename)?s.arg:(s.i_module.i_prefix + ':' + s.arg); 
-        var line = " " + name;
-        fd.write(line + '\n');
-    }
+
     static function pyang_plugin_init() {
         Plugin.register_plugin(new TreePlugin());
     }
