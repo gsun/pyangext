@@ -59,8 +59,8 @@ class TreePlugin extends PyangPlugin {
             if (path[0] == '') path.shift();
         }
         emit_tree(ctx, modules, writef, 
-		          (ctx.opts.tree_depth != null)?ctx.opts.tree_depth:0, 
-				  (ctx.opts.tree_line_length != null)?ctx.opts.tree_line_length:0, path);
+                  (ctx.opts.tree_depth != null)?ctx.opts.tree_depth:0, 
+                  (ctx.opts.tree_line_length != null)?ctx.opts.tree_line_length:0, path);
     }
 
     function print_help() {
@@ -273,46 +273,46 @@ class TreePlugin extends PyangPlugin {
     }
     
     function print_path(pre:String, post:String, path:String, fd:TextIOBase, llen:Int) {
-		function print_comps(pre:String, p:Array<String>, is_first:Bool) {
-			var line = pre + '/' + p[0];
-			var p = p.slice(1);
-			if (line.length > llen) {
-				// too long, print it anyway; it won't fit next line either
-				return;
-			} else {
-				while (p.length > 0 && line.length + 1 + p[0].length <= llen) {
-					if (p.length == 1 && line.length + 1 + p[0].length + post.length > llen) {
-						// if this is the last component, ensure 'post' fits
-						break;
-					}
-					line += '/' + p[0];
-					p = p.slice(1);
-				}
-			}
-			if (p.length == 0) {
-				line += post;
-			}
-			line += '\n';
-			fd.write(line);
-			if (p.length > 0) {
-				if (is_first) {
-				    var pre = " ";
-				    for (ii in 1...pre.length+2) pre += " "; // indent next line
-				}
-				print_comps(pre, p, false);
-			}
-		}
+        function print_comps(pre:String, p:Array<String>, is_first:Bool) {
+            var line = pre + '/' + p[0];
+            var p = p.slice(1);
+            if (line.length > llen) {
+                // too long, print it anyway; it won't fit next line either
+                return;
+            } else {
+                while (p.length > 0 && line.length + 1 + p[0].length <= llen) {
+                    if (p.length == 1 && line.length + 1 + p[0].length + post.length > llen) {
+                        // if this is the last component, ensure 'post' fits
+                        break;
+                    }
+                    line += '/' + p[0];
+                    p = p.slice(1);
+                }
+            }
+            if (p.length == 0) {
+                line += post;
+            }
+            line += '\n';
+            fd.write(line);
+            if (p.length > 0) {
+                if (is_first) {
+                    var pre = " ";
+                    for (ii in 1...pre.length+2) pre += " "; // indent next line
+                }
+                print_comps(pre, p, false);
+            }
+        }
         var line = pre + ' ' + path + post;
-		if (llen == 0 || line.length < llen) {
-			fd.write(line + '\n');
-		} else {
-			var p = path.split('/');
+        if (llen == 0 || line.length < llen) {
+            fd.write(line + '\n');
+        } else {
+            var p = path.split('/');
             if (p[0] == '') {
                p = p.slice(1);
-			}
+            }
             var pre =  pre + " ";
             print_comps(pre, p, true);
-		}
+        }
     }
     
     function print_children(i_children:Array<Statement>, module:Statement, fd:TextIOBase, prefix:String, path:Array<String>, mode:String, depth:Int,
@@ -321,8 +321,25 @@ class TreePlugin extends PyangPlugin {
             if (i_children != null) fd.write(prefix + '     ...\n');
             return;
         }
+        function get_width(w:Int, chs:Array<Statement>) {
+            var ww = w;
+            for (ch in chs) {
+                var nlen;
+                if (['choice', 'case'].has(ch.keyword)) {
+                    nlen = 3 + get_width(0, ch.i_children);
+                } else {
+                    if (ch.i_module.i_modulename == module.i_modulename) {
+                        nlen = ch.arg.length;
+                    } else {
+                        nlen = ch.i_module.i_prefix.length + 1 + ch.arg.length;
+                    }
+                }
+                if (nlen > ww) ww = nlen;
+            }
+            return ww;
+        }
         if (no_expand_uses) i_children = unexpand_uses(i_children);
-        var w = (width==0)?get_width(0, i_children, module):width;
+        var w = (width==0)?get_width(0, i_children):width;
         for (ch in i_children) {
             if ((ch.keyword == 'input' || ch.keyword == 'output') && (ch.i_children.length == 0)) continue;
             var last_i = i_children[i_children.length-1];
@@ -337,25 +354,51 @@ class TreePlugin extends PyangPlugin {
         fd.write(line + '\n');
     }
     
-    function get_width(w:Int, chs:Array<Statement>, module:Statement) {
-        var ww = w;
-        for (ch in chs) {
-            var nlen;
-            if (['choice', 'case'].has(ch.keyword)) {
-                nlen = 3 + get_width(0, ch.i_children, module);
-            } else {
-                if (ch.i_module.i_modulename == module.i_modulename) {
-                    nlen = ch.arg.length;
-                } else {
-                    nlen = ch.i_module.i_prefix.length + 1 + ch.arg.length;
-                }
-            }
-            if (nlen > ww) ww = nlen;
-        }
-        return ww;
-    }
-
     static function pyang_plugin_init() {
         Plugin.register_plugin(new TreePlugin());
+    }
+    
+    function get_status_str(s:Statement) {
+        var status = s.search_one('status');
+        if (status == null || status.arg == 'current') {
+            return '+';
+        } else if (status.arg == 'deprecated') {
+            return 'x';
+        } else if (status.arg == 'obsolete') {
+            return 'o';
+        } else {
+            return '';
+        }
+    }
+
+    function get_flags_str(s:Statement, mode:String) {
+        if (mode == 'input') {
+            return "-w";
+        } else if (['rpc', 'action'].has(s.keyword)) {
+            return '-x';
+        } else if (s.keyword == 'notification') {
+            return '-n';
+        } else if (s.keyword == 'uses') {
+            return '-u';
+        } else if (s.i_config == true) {
+            return 'rw';
+        } else if (s.i_config == false || ['output', 'notification'].has(mode)) {
+            return 'ro';
+        } else {
+            return '';
+        }
+    }
+
+    function get_leafref_path(s:Statement) {
+        var t = s.search_one('type');
+        if (t != null) {
+            if (t.arg == 'leafref') {
+                return t.search_one('path');
+            } else {
+                return null;
+            }
+        } else {
+            return null;
+        }
     }
 }
