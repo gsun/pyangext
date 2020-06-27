@@ -58,7 +58,9 @@ class TreePlugin extends PyangPlugin {
             path = ctx.opts.tree_path.split('/');
             if (path[0] == '') path.shift();
         }
-        emit_tree(ctx, modules, writef, ctx.opts.tree_depth, ctx.opts.tree_line_length, path);
+        emit_tree(ctx, modules, writef, 
+		          (ctx.opts.tree_depth != null)?ctx.opts.tree_depth:0, 
+				  (ctx.opts.tree_line_length != null)?ctx.opts.tree_line_length:0, path);
     }
 
     function print_help() {
@@ -271,8 +273,46 @@ class TreePlugin extends PyangPlugin {
     }
     
     function print_path(pre:String, post:String, path:String, fd:TextIOBase, llen:Int) {
-        var line = pre + ' ' + path + post + '\n';
-        fd.write(line);
+		function print_comps(pre:String, p:Array<String>, is_first:Bool) {
+			var line = pre + '/' + p[0];
+			var p = p.slice(1);
+			if (line.length > llen) {
+				// too long, print it anyway; it won't fit next line either
+				return;
+			} else {
+				while (p.length > 0 && line.length + 1 + p[0].length <= llen) {
+					if (p.length == 1 && line.length + 1 + p[0].length + post.length > llen) {
+						// if this is the last component, ensure 'post' fits
+						break;
+					}
+					line += '/' + p[0];
+					p = p.slice(1);
+				}
+			}
+			if (p.length == 0) {
+				line += post;
+			}
+			line += '\n';
+			fd.write(line);
+			if (p.length > 0) {
+				if (is_first) {
+				    var pre = " ";
+				    for (ii in 1...pre.length+2) pre += " "; // indent next line
+				}
+				print_comps(pre, p, false);
+			}
+		}
+        var line = pre + ' ' + path + post;
+		if (llen == 0 || line.length < llen) {
+			fd.write(line + '\n');
+		} else {
+			var p = path.split('/');
+            if (p[0] == '') {
+               p = p.slice(1);
+			}
+            var pre =  pre + " ";
+            print_comps(pre, p, true);
+		}
     }
     
     function print_children(i_children:Array<Statement>, module:Statement, fd:TextIOBase, prefix:String, path:Array<String>, mode:String, depth:Int,
