@@ -21,6 +21,13 @@ extern class Statement implements Dynamic {
     public function search_one(keyword:KeyWordType, ?arg:String, ?children:Statement):Statement;
 
     inline function resolve(f:String):Any {
-        return Reflect.hasField(this, f)?Reflect.field(this, f):null;
+        if (Reflect.hasField(this, f)) {
+		    return Reflect.field(this, f);
+		} else {
+			return switch (f) {
+			case 'i_children'|'i_uses': new Array<Statement>();
+			default: null;
+			};
+		}
     }
 }

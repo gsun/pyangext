@@ -255,7 +255,7 @@ class TreePlugin extends PyangPlugin {
         var uses:Array<String>= [];
         for (ch in i_children) {
             var i_uses:Array<Statement> = cast ch.i_uses;
-            if (i_uses != null && i_uses.length > 0) {
+            if (i_uses.length > 0) {
                 // take first from i_uses, which means "closest" grouping
                 var g = i_uses[0].arg;
                 if (!uses.has(g)) {
