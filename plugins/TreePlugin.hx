@@ -5,6 +5,7 @@ import python.Dict;
 import pyangext.Optparse.*;
 import pyangext.*;
 import python.Tuple.Tuple2;
+import python.NativeStringTools;
 using Lambda;
 
 /* need ot add module function pyang_plugin_init in generated python file, 
@@ -58,9 +59,9 @@ class TreePlugin extends PyangPlugin {
             path = ctx.opts.tree_path.split('/');
             if (path[0] == '') path.shift();
         }
-        emit_tree(ctx, modules, writef, 
-                  (ctx.opts.tree_depth != null)?ctx.opts.tree_depth:0, 
-                  (ctx.opts.tree_line_length != null)?ctx.opts.tree_line_length:0, path);
+        var tree_depth = (ctx.opts.tree_depth != null)?ctx.opts.tree_depth:0;
+        var tree_line_length = (ctx.opts.tree_line_length != null)?ctx.opts.tree_line_length:0;
+        emit_tree(ctx, modules, writef, tree_depth, tree_line_length, path);
     }
 
     function print_help() {
@@ -139,7 +140,7 @@ class TreePlugin extends PyangPlugin {
                     printed_header = true;
                 }
                 print_children(chs, module, fd, '', chpath, 'data', depth, llen,
-                               ctx.opts.tree_no_expand_uses,
+                               ctx.opts.tree_no_expand_uses, 0,
                                ctx.opts.modname_prefix);
             }
             var mods = [module];
@@ -170,7 +171,7 @@ class TreePlugin extends PyangPlugin {
                         }
                         print_children(augment.i_children, m, fd,
                                    '  ', path, mode, depth, llen,
-                                   ctx.opts.tree_no_expand_uses,
+                                   ctx.opts.tree_no_expand_uses, 0,
                                    ctx.opts.modname_prefix);
                     }
                 }
@@ -188,7 +189,7 @@ class TreePlugin extends PyangPlugin {
                 }
                 fd.write("\n  rpcs:\n");
                 print_children(rpcs, module, fd, '  ', rpath, 'rpc', depth, llen,
-                           ctx.opts.tree_no_expand_uses,
+                           ctx.opts.tree_no_expand_uses, 0,
                            ctx.opts.modname_prefix);
             }
             var notifs = [for (ch in i_children) if (ch.keyword == 'notification') ch];
@@ -205,7 +206,7 @@ class TreePlugin extends PyangPlugin {
                 fd.write("\n  notifications:\n");
                 print_children(notifs, module, fd, '  ', npath,
                            'notification', depth, llen,
-                           ctx.opts.tree_no_expand_uses,
+                           ctx.opts.tree_no_expand_uses, 0,
                            ctx.opts.modname_prefix);
             }
             if (ctx.opts.tree_print_groupings) {
@@ -223,7 +224,7 @@ class TreePlugin extends PyangPlugin {
                         fd.write('  grouping ${g.arg}\n');
                         print_children(g.i_children, m, fd,
                                        '  ', path, 'grouping', depth, llen,
-                                       ctx.opts.tree_no_expand_uses,
+                                       ctx.opts.tree_no_expand_uses, 0,
                                        ctx.opts.modname_prefix);
                     }
                 }
@@ -244,7 +245,7 @@ class TreePlugin extends PyangPlugin {
                         fd.write('  yang-data ${yd.arg}:\n');
                         print_children(yd.i_children, module, fd, '  ', path,
                                        'yang-data', depth, llen,
-                                       ctx.opts.tree_no_expand_uses,
+                                       ctx.opts.tree_no_expand_uses, 0,
                                        ctx.opts.modname_prefix);
                     }
                 }
@@ -316,11 +317,7 @@ class TreePlugin extends PyangPlugin {
     }
     
     function print_children(i_children:Array<Statement>, module:Statement, fd:TextIOBase, prefix:String, path:Array<String>, mode:String, depth:Int,
-                            llen:Int, no_expand_uses:Bool, width:Int=0, prefix_with_modname:Bool=false) {
-        if (depth == 0) {
-            if (i_children != null) fd.write(prefix + '     ...\n');
-            return;
-        }
+                            llen:Int, no_expand_uses:Bool, width:Int, prefix_with_modname:Bool=false) {
         function get_width(w:Int, chs:Array<Statement>) {
             var ww = w;
             for (ch in chs) {
@@ -344,14 +341,132 @@ class TreePlugin extends PyangPlugin {
             if ((ch.keyword == 'input' || ch.keyword == 'output') && (ch.i_children.length == 0)) continue;
             var last_i = i_children[i_children.length-1];
             var newprefix = (ch == last_i || (last_i.keyword == 'output' && last_i.i_children.length == 0))? (prefix + '   '):(prefix + '  |');
-            print_node(ch, module, fd, newprefix, ch.keyword, w);
+            var m = mode;
+            if (ch.keyword == 'input') {
+                m = 'input';
+            } else if (ch.keyword == 'output') {
+                m = 'output';
+            }
+            print_node(ch, module, fd, newprefix, path, m, depth, llen,
+                       no_expand_uses, w,
+                       prefix_with_modname);
         }
     }
+    
+    static function times (str:String, n:Int) {
+        return [for (i in 0...n) str].join("");
+    }
 
-    function print_node(s:Statement, module:Statement, fd:TextIOBase, prefix:String, mode:String, width:Int=0) {
-        var name = (s.i_module.i_modulename == module.i_modulename)?s.arg:(s.i_module.i_prefix + ':' + s.arg); 
-        var line = " " + name;
+    function print_node(s:Statement, module:Statement, fd:TextIOBase, prefix:String, path:Array<String>, mode:String, depth:Int, llen:Int, no_expand_uses:Bool, width:Int, prefix_with_modname:Bool=false) {
+        var line = '${prefix.substr(0, prefix.length-1)}${get_status_str(s)}--';
+        var brcol = line.length + 4;
+        var name:String;
+        if (s.i_module.i_modulename == module.i_modulename) {
+            name = s.arg;
+        } else {
+            if (prefix_with_modname) {
+                name = s.i_module.i_modulename + ':' + s.arg;
+            } else {
+                name = s.i_module.i_prefix + ':' + s.arg;
+            }
+        }
+        var flags = get_flags_str(s, mode);
+        if (s.keyword == 'list') {
+            name += '*';
+            line += flags + " " + name;
+        } else if (s.keyword == 'container') {
+            var p = s.search_one('presence');
+            if (p != null) {
+                name += '!';
+            }
+            line += flags + " " + name;
+        } else if (s.keyword  == 'choice') {
+            var m = s.search_one('mandatory');
+            if (m == null || m.arg == 'false') {
+                line += flags + ' (' + name + ')?';
+            } else {
+                line += flags + ' (' + name + ')';
+            }
+        } else if (s.keyword == 'case') {
+            line += ':(' + name + ')';
+            brcol += 1;
+        } else {
+            if (s.keyword == 'leaf-list') {
+                name += '*';
+            } else if (s.keyword == 'leaf' && s.i_is_key == null
+                  ||  s.keyword == 'anydata' || s.keyword == 'anyxml') {
+                var m = s.search_one('mandatory');
+                if (m == null || m.arg == 'false') {
+                    name += '?';
+                }
+            }
+            var t = get_typename(s, prefix_with_modname);
+            if (t == '') {
+                line += '${flags} ${name}';
+            } else if (llen != 0 &&
+                  line.length + flags.length + width+1 + t.length + 4 > llen) {
+                // there's no room for the type name
+                if (get_leafref_path(s) != null &&
+                    t.length + brcol > llen) {
+                    // there's not even room for the leafref path; skip it
+                    line += '$flags ${name.substr(0,width+1)}   leafref';
+                } else {
+                    line += '${flags} ${name}';
+                    fd.write(line + '\n');
+                    line = prefix + times(' ',(brcol - prefix.length)) + ' ' + t;
+                }
+            } else {
+                line += '$flags ${name.substr(0,width+1)}   $t';
+            }
+        }
+        if (s.keyword == 'list') {
+            if (s.search_one('key') != null) {
+                var arg = s.search_one('key').arg;
+                var keystr = ' [${arg}]';
+                if (llen != 0 && line.length + keystr.length > llen) {
+                    fd.write(line + '\n');
+                    line = prefix + times(' ', (brcol - prefix.length));
+                }
+                line += keystr;
+            } else {
+                line += " []";
+            }
+        }
+        var features = s.search('if-feature');
+        var featurenames = [for (f in features) f.arg];
+        if (s.i_augment != null) {
+            var afeatures:Array<Statement> = s.i_augment.search('if-feature');
+            featurenames.concat([for (f in afeatures) if (!featurenames.has(f.arg)) f.arg]);
+        }
+        if (featurenames.length > 0) {
+            var f = featurenames.join(",");
+            var fstr = ' {$f}?';
+            if (llen != 0 && line.length + fstr.length > llen) {
+                fd.write(line + '\n');
+                line = prefix + times(' ',(brcol - prefix.length));
+            }
+            line += fstr;
+        }
         fd.write(line + '\n');
+        if (s.i_children != null && s.keyword != 'uses') {
+            if (depth != 0) {
+                depth = depth - 1;
+            }
+            var chs:Array<Statement> = s.i_children;
+            if (path.length > 0) {
+                var chs = [for (ch in chs) if (ch.arg == path[0]) ch];
+                path = path.slice(1);
+            }
+            if (['choice', 'case'].has(s.keyword)) {
+                print_children(chs, module, fd, prefix, path, mode, depth,
+                               llen, no_expand_uses, width - 3,
+                               prefix_with_modname);
+            } else {
+                print_children(chs, module, fd, prefix, path, mode, depth, llen,
+                               no_expand_uses, 0,
+                               prefix_with_modname);
+            }
+        }
     }
     
     static function pyang_plugin_init() {
@@ -382,7 +497,7 @@ class TreePlugin extends PyangPlugin {
             return '-u';
         } else if (s.i_config == true) {
             return 'rw';
-        } else if (s.i_config == false || ['output', 'notification'].has(mode)) {
+        } else if (s.i_config == false || mode == 'output' || mode == 'notification') {
             return 'ro';
         } else {
             return '';
@@ -399,6 +514,104 @@ class TreePlugin extends PyangPlugin {
             }
         } else {
             return null;
+        }
+    }
+    
+    function get_typename(s:Statement, prefix_with_modname:Bool=false) {
+        var t:Statement = s.search_one('type');
+        if (t != null) {
+            if (t.arg == 'leafref') {
+                var p = t.search_one('path');
+                if (p != null) {
+                    // Try to make the path as compact as possible.
+                    // Remove local prefixes, and only use prefix when
+                    // there is a module change in the path.
+                    var target:Array<String> = [];
+                    var curprefix = s.i_module.i_prefix;
+                    var p:Statement.SchemaNodeId = p.arg;
+                    for (n in p.path) {
+                        var prefix =  (n.prefix)==null?curprefix:n.prefix;
+                        var name = n.id;
+                        if (prefix == curprefix) {
+                            target.push(name);
+                        } else {
+                            if (prefix_with_modname) {
+                                var i_prefixes:Dict<String, Tuple2<String, String>> = cast s.i_module.i_prefixes;
+                                var module_name:String;
+                                if (i_prefixes.hasKey(prefix)) {
+                                    // Try to map the prefix to the module name
+                                    module_name = s.i_module.i_prefixes.get(prefix)._1;
+                                } else {
+                                    // If we can't then fall back to the prefix
+                                    module_name = prefix;
+                                }
+                                target.push(module_name + ':' + name);
+                            } else {
+                                target.push(prefix + ':' + name);
+                            }
+                            curprefix = prefix;
+                        }
+                    }
+                    return '-> ${target.join("/")}';
+                } else {
+                    // This should never be reached. Path MUST be present for
+                    // leafref type. See RFC6020 section 9.9.2
+                    // (https://tools.ietf.org/html/rfc6020#section-9.9.2)
+                    if (prefix_with_modname) {
+                        var p:Statement.NodeId = t.arg;
+                        if (p.prefix == null) {
+                            // No prefix specified. Leave as is
+                            return t.arg;
+                        } else {
+                            // Prefix found. Replace it with the module name
+                            var prefix = p.prefix;
+                            var name = p.id;
+                            var i_prefixes:Dict<String, Tuple2<String, String>> = cast s.i_module.i_prefixes;
+                            var module_name:String;
+                            if (i_prefixes.hasKey(prefix)) {
+                                // Try to map the prefix to the module name
+                                module_name = s.i_module.i_prefixes.get(prefix)._1;
+                            } else {
+                                // If we can't then fall back to the prefix
+                                module_name = prefix;
+                            }
+                            return module_name + ':' + name;
+                        }
+                    } else {
+                        return t.arg;
+                    }
+                }
+            } else {
+                if (prefix_with_modname) {
+                    var p:Statement.NodeId = t.arg;
+                    if (p.prefix == null) {
+                        // No prefix specified. Leave as is
+                        return t.arg;
+                    } else {
+                        // Prefix found. Replace it with the module name
+                        var prefix = p.prefix;
+                        var name = p.id;
+                        var i_prefixes:Dict<String, Tuple2<String, String>> = cast s.i_module.i_prefixes;
+                        var module_name:String;
+                        if (i_prefixes.hasKey(prefix)) {
+                            // Try to map the prefix to the module name
+                            module_name = s.i_module.i_prefixes.get(prefix)._1;
+                        } else {
+                            // If we can't then fall back to the prefix
+                            module_name = prefix;
+                        }
+                        return module_name + ':' + name;
+                    }
+                } else {
+                    return t.arg;
+                }
+            }
+        } else if (s.keyword == 'anydata') {
+            return '<anydata>';
+        } else if (s.keyword == 'anyxml') {
+            return '<anyxml>';
+        } else {
+            return '';
         }
     }
 }
