@@ -530,23 +530,21 @@ class TreePlugin extends PyangPlugin {
                     var p:Statement.SchemaNodeId = p.arg;
                     for (n in p.path) {
                         var prefix =  (n.prefix)==null?curprefix:n.prefix;
-                        var name = n.id;
                         if (prefix == curprefix) {
-                            target.push(name);
+                            target.push(n.id);
                         } else {
                             if (prefix_with_modname) {
                                 var i_prefixes:Dict<String, Tuple2<String, String>> = cast s.i_module.i_prefixes;
-                                var module_name:String;
                                 if (i_prefixes.hasKey(prefix)) {
                                     // Try to map the prefix to the module name
-                                    module_name = s.i_module.i_prefixes.get(prefix)._1;
+                                    var module_name = s.i_module.i_prefixes.get(prefix)._1;
+                                    target.push(module_name + ':' + n.id);
                                 } else {
                                     // If we can't then fall back to the prefix
-                                    module_name = prefix;
+                                    target.push(prefix + ':' + n.id);
                                 }
-                                target.push(module_name + ':' + name);
                             } else {
-                                target.push(prefix + ':' + name);
+                                target.push(prefix + ':' + n.id);
                             }
                             curprefix = prefix;
                         }
@@ -563,18 +561,14 @@ class TreePlugin extends PyangPlugin {
                             return t.arg;
                         } else {
                             // Prefix found. Replace it with the module name
-                            var prefix = p.prefix;
-                            var name = p.id;
                             var i_prefixes:Dict<String, Tuple2<String, String>> = cast s.i_module.i_prefixes;
-                            var module_name:String;
-                            if (i_prefixes.hasKey(prefix)) {
+                            if (i_prefixes.hasKey(p.prefix)) {
                                 // Try to map the prefix to the module name
-                                module_name = s.i_module.i_prefixes.get(prefix)._1;
+                                var module_name = s.i_module.i_prefixes.get(p.prefix)._1;
+                                return module_name + ':' + p.id;
                             } else {
-                                // If we can't then fall back to the prefix
-                                module_name = prefix;
+                                return t.arg;
                             }
-                            return module_name + ':' + name;
                         }
                     } else {
                         return t.arg;
@@ -588,18 +582,14 @@ class TreePlugin extends PyangPlugin {
                         return t.arg;
                     } else {
                         // Prefix found. Replace it with the module name
-                        var prefix = p.prefix;
-                        var name = p.id;
                         var i_prefixes:Dict<String, Tuple2<String, String>> = cast s.i_module.i_prefixes;
-                        var module_name:String;
-                        if (i_prefixes.hasKey(prefix)) {
+                        if (i_prefixes.hasKey(p.prefix)) {
                             // Try to map the prefix to the module name
-                            module_name = s.i_module.i_prefixes.get(prefix)._1;
+                            var module_name = s.i_module.i_prefixes.get(p.prefix)._1;
+                            return module_name + ':' + p.id;
                         } else {
-                            // If we can't then fall back to the prefix
-                            module_name = prefix;
+                            return t.arg;
                         }
-                        return module_name + ':' + name;
                     }
                 } else {
                     return t.arg;
