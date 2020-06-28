@@ -5,11 +5,10 @@ import python.Dict;
 import pyangext.Optparse.*;
 import pyangext.*;
 import python.Tuple.Tuple2;
-import python.NativeStringTools;
 using Lambda;
 
-/* need ot add module function pyang_plugin_init in generated python file, 
-   and call TreePlugin.pyang_plugin_init() in pyang_plugin_init. */
+/* need to add module function pyang_plugin_init in generated python file, 
+   and call TreePlugin.pyang_plugin_init() in pyang_plugin_init, because Haxe not support global function currently. */
 
 class TreePlugin extends PyangPlugin {
     public function new() {
@@ -552,7 +551,7 @@ class TreePlugin extends PyangPlugin {
                             curprefix = prefix;
                         }
                     }
-                    return '-> ${target.join("/")}';
+                    return '-> ${p.absolute?"/":""}${target.join("/")}';
                 } else {
                     // This should never be reached. Path MUST be present for
                     // leafref type. See RFC6020 section 9.9.2
